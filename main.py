@@ -5,7 +5,6 @@ import time
 
 app = FastAPI()
 
-# আপনার ওয়েবসাইট যাতে কোনো বাধা ছাড়াই ডেটা নিতে পারে (CORS Policy সমাধান)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,20 +13,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ডেটা ক্যাশ এবং ৩ মিনিট সময় নির্ধারণ
 cached_data = None
 last_update_time = 0
-UPDATE_INTERVAL = 180 # ১৮০ সেকেন্ড বা ৩ মিনিট
+UPDATE_INTERVAL = 180 # ৩ মিনিট
 
 def fetch_dse_data():
     try:
         df = get_current_trade_data()
-        # pandas dataframe-কে সহজে পড়ার উপযোগী ডিকশনারি ফরমেটে নেওয়া
-        data_json = df.to_dict(orient="records")
-        return data_json
+        if df is not None and not df.empty:
+            data_json = df.to_dict(orient="records")
+            return data_json
+        return None
     except Exception as e:
         print(f"Error fetching data: {e}")
         return None
+
+# সার্ভার চালু হওয়ার সাথে সাথেই একবার ব্যাকগ্রাউন্ডে ডেটা স্ক্র্যাপ করে রাখবে
+try:
+    print("সার্ভার চালু হচ্ছে, প্রথমবার ডেটা স্ক্র্যাপ করা হচ্ছে...")
+    cached_data = fetch_dse_data()
+    if cached_data:
+        last_update_time = time.time()
+except Exception as e:
+    print(f"Startup fetch failed: {e}")
 
 @app.get("/")
 def home():
@@ -38,7 +46,7 @@ def get_live_stocks():
     global cached_data, last_update_time
     current_time = time.time()
     
-    # যদি ৩ মিনিট পার হয়ে যায় বা ক্যাশে কোনো ডেটা না থাকে
+    # ৩ মিনিট পর পর আপডেট হবে
     if cached_data is None or (current_time - last_update_time) > UPDATE_INTERVAL:
         new_data = fetch_dse_data()
         if new_data:
